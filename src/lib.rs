@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::ops::Add;
+use std::ops::{Add, Sub};
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -10,8 +10,18 @@ impl Add for Node {
     type Output = Node;
 
     fn add(self, other: Node) -> Node {
-        let inner = self.inner.clone() + other.inner.clone();
-        Node { inner }
+        Node {
+            inner: self.inner.clone() + other.inner.clone(),
+        }
+    }
+}
+
+impl Sub for Node {
+    type Output = Node;
+    fn sub(self, other: Self) -> Self::Output {
+        Node {
+            inner: self.inner.clone() - other.inner.clone(),
+        }
     }
 }
 
@@ -95,6 +105,20 @@ impl Add for ValueRef {
             op: Operator::Add,
         };
 
+        ValueRef(Rc::new(RefCell::new(new_value)))
+    }
+}
+
+impl Sub for ValueRef {
+    type Output = ValueRef;
+    fn sub(self, rhs: Self) -> Self::Output {
+        let data = self.0.borrow().data - rhs.0.borrow().data;
+        let new_value = Value {
+            data,
+            grad: 0.0,
+            prev: vec![self.clone(), rhs.clone()],
+            op: Operator::Add,
+        };
         ValueRef(Rc::new(RefCell::new(new_value)))
     }
 }
