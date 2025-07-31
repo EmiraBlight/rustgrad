@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 use std::ops::{Add, Sub};
 use std::rc::Rc;
 
@@ -89,6 +89,17 @@ impl ValueRef {
                 Operator::None => {}
             }
         }
+    }
+    pub fn pow(self, other: ValueRef) -> ValueRef {
+        let data = self.0.borrow().data.powf(other.0.borrow().data);
+        let new_value = Value {
+            data,
+            grad: 0.0,
+            prev: vec![self.clone(), other.clone()],
+            op: Operator::Add,
+            //TODO:  this needs to be changed to Operator::Pow and needs to have backwards implemented
+        };
+        ValueRef(Rc::new(RefCell::new(new_value)))
     }
 }
 
