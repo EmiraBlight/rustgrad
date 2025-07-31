@@ -51,9 +51,6 @@ impl Node {
     pub fn grad(&self) -> f64 {
         self.inner.0.borrow().grad
     }
-    pub fn set_grad(&self, value: f64) {
-        self.inner.0.borrow_mut().grad = value;
-    }
 }
 #[derive(Clone, Debug, PartialEq)]
 pub enum Operator {
@@ -84,27 +81,31 @@ impl ValueRef {
     }
 
     pub fn backward(self) {
-        self.0.borrow_mut().grad = 1.0;
+        self._backward(1.0);
+    }
 
-        let mut stack = vec![self.clone()];
+    fn _backward(&self, grad: f64) {
+        let mut v = self.0.borrow_mut();
+        v.grad += grad;
 
-        while let Some(vr) = stack.pop() {
-            let v = vr.0.borrow();
-            match v.op {
-                Operator::Add => {
-                    for child in &v.prev {
-                        let mut child_mut = child.0.borrow_mut();
-                        child_mut.grad += v.grad;
-                        stack.push(child.clone());
-                    }
+        match v.op {
+            Operator::Add => {
+                for child in &v.prev {
+                    child._backward(v.grad);
                 }
-                Operator::Mul => {
-                    let mut slf = v.prev.get(0).unwrap().0.borrow_mut();
-                    let mut other = v.prev.get(1).unwrap().0.borrow_mut();
-                    slf.grad += other.data * self.0.borrow().grad;
-                    other.grad += slf.data * self.0.borrow().grad;
-                }
-                Operator::None => {}
+            }
+            Operator::Mul => {
+                let left = v.prev.get(0).unwrap();
+                let right = v.prev.get(1).unwrap();
+
+                let left_data = left.0.borrow().data;
+                let right_data = right.0.borrow().data;
+
+                left._backward(right_data * v.grad);
+                right._backward(left_data * v.grad);
+            }
+            Operator::None => {
+                // Leaf node, do nothing more
             }
         }
     }
