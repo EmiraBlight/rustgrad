@@ -1,7 +1,7 @@
 use std::cell::{Ref, RefCell};
+use std::collections::HashSet;
 use std::ops::{Add, Mul, Sub};
 use std::rc::Rc;
-
 #[derive(Clone)]
 pub struct Node {
     inner: ValueRef,
@@ -57,6 +57,7 @@ pub enum Operator {
     None,
     Add,
     Mul,
+    Pow,
 }
 
 #[derive(Debug)]
@@ -81,44 +82,69 @@ impl ValueRef {
     }
 
     pub fn backward(self) {
-        self._backward(1.0);
+        let mut visited = std::collections::HashSet::new();
+        let mut order = vec![];
+
+        fn topo_sort(
+            v: &ValueRef,
+            visited: &mut std::collections::HashSet<*const RefCell<Value>>,
+            order: &mut Vec<ValueRef>,
+        ) {
+            let ptr = Rc::as_ptr(&v.0);
+            if visited.contains(&ptr) {
+                return;
+            }
+            visited.insert(ptr);
+
+            for child in &v.0.borrow().prev {
+                topo_sort(child, visited, order);
+            }
+            order.push(v.clone());
+        }
+
+        topo_sort(&self, &mut visited, &mut order);
+
+        self.0.borrow_mut().grad = 1.0;
+
+        for node in order.into_iter().rev() {
+            node._backward();
+        }
     }
 
-    fn _backward(&self, grad: f64) {
-        let mut v = self.0.borrow_mut();
-        v.grad += grad;
+    fn _backward(&self) {
+        let v = self.0.borrow();
 
         match v.op {
             Operator::Add => {
                 for child in &v.prev {
-                    child._backward(v.grad);
+                    child.0.borrow_mut().grad += v.grad;
                 }
             }
             Operator::Mul => {
-                let left = v.prev.get(0).unwrap();
-                let right = v.prev.get(1).unwrap();
+                let left = &v.prev[0];
+                let right = &v.prev[1];
 
-                let left_data = left.0.borrow().data;
-                let right_data = right.0.borrow().data;
+                let left_val = left.0.borrow().data;
+                let right_val = right.0.borrow().data;
 
-                left._backward(right_data * v.grad);
-                right._backward(left_data * v.grad);
+                left.0.borrow_mut().grad += right_val * v.grad;
+                right.0.borrow_mut().grad += left_val * v.grad;
             }
-            Operator::None => {
-                // Leaf node, do nothing more
+            Operator::Pow => {
+                let base = &v.prev[0];
+                let exponent = &v.prev[1];
+
+                let base_val = base.0.borrow().data;
+                let exponent_val = exponent.0.borrow().data;
+
+                let base_grad = exponent_val * base_val.powf(exponent_val - 1.0) * v.grad;
+                let exponent_grad = base_val.ln() * base_val.powf(exponent_val) * v.grad;
+
+                base.0.borrow_mut().grad += base_grad;
+                exponent.0.borrow_mut().grad += exponent_grad;
             }
+            Operator::None => {}
         }
-    }
-    pub fn pow(self, other: ValueRef) -> ValueRef {
-        let data = self.0.borrow().data.powf(other.0.borrow().data);
-        let new_value = Value {
-            data,
-            grad: 0.0,
-            prev: vec![self.clone(), other.clone()],
-            op: Operator::Add,
-            //TODO:  this needs to be changed to Operator::Pow and needs to have backwards implemented
-        };
-        ValueRef(Rc::new(RefCell::new(new_value)))
     }
 }
 
