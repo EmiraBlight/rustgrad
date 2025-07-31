@@ -1,5 +1,5 @@
 use std::cell::{Ref, RefCell};
-use std::ops::{Add, Sub};
+use std::ops::{Add, Mul, Sub};
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -24,6 +24,14 @@ impl Sub for Node {
         }
     }
 }
+impl Mul for Node {
+    type Output = Node;
+    fn mul(self, other: Node) -> Node {
+        Node {
+            inner: self.inner.clone() * other.inner.clone(),
+        }
+    }
+}
 
 impl Node {
     pub fn new(data: f64) -> Self {
@@ -43,11 +51,15 @@ impl Node {
     pub fn grad(&self) -> f64 {
         self.inner.0.borrow().grad
     }
+    pub fn set_grad(&self, value: f64) {
+        self.inner.0.borrow_mut().grad = value;
+    }
 }
 #[derive(Clone, Debug, PartialEq)]
 pub enum Operator {
     None,
     Add,
+    Mul,
 }
 
 #[derive(Debug)]
@@ -86,6 +98,12 @@ impl ValueRef {
                         stack.push(child.clone());
                     }
                 }
+                Operator::Mul => {
+                    let mut slf = v.prev.get(0).unwrap().0.borrow_mut();
+                    let mut other = v.prev.get(1).unwrap().0.borrow_mut();
+                    slf.grad += other.data * self.0.borrow().grad;
+                    other.grad += slf.data * self.0.borrow().grad;
+                }
                 Operator::None => {}
             }
         }
@@ -122,13 +140,27 @@ impl Add for ValueRef {
 
 impl Sub for ValueRef {
     type Output = ValueRef;
-    fn sub(self, rhs: Self) -> Self::Output {
+    fn sub(self, rhs: Self) -> ValueRef {
         let data = self.0.borrow().data - rhs.0.borrow().data;
         let new_value = Value {
             data,
             grad: 0.0,
             prev: vec![self.clone(), rhs.clone()],
             op: Operator::Add,
+        };
+        ValueRef(Rc::new(RefCell::new(new_value)))
+    }
+}
+
+impl Mul for ValueRef {
+    type Output = ValueRef;
+    fn mul(self, other: Self) -> ValueRef {
+        let data = self.0.borrow().data * other.0.borrow().data;
+        let new_value: Value = Value {
+            data,
+            grad: 0.0,
+            prev: vec![self.clone(), other.clone()],
+            op: Operator::Mul,
         };
         ValueRef(Rc::new(RefCell::new(new_value)))
     }
