@@ -1,5 +1,4 @@
-use std::cell::{Ref, RefCell};
-use std::collections::HashSet;
+use std::cell::RefCell;
 use std::ops::{Add, Div, Mul, Neg, Sub};
 use std::rc::Rc;
 #[derive(Clone)]
