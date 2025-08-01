@@ -1,6 +1,6 @@
 use std::cell::{Ref, RefCell};
 use std::collections::HashSet;
-use std::ops::{Add, Mul, Sub};
+use std::ops::{Add, Div, Mul, Neg, Sub};
 use std::rc::Rc;
 #[derive(Clone)]
 pub struct Node {
@@ -32,6 +32,23 @@ impl Mul for Node {
         }
     }
 }
+impl Div for Node {
+    type Output = Node;
+    fn div(self, other: Node) -> Node {
+        Node {
+            inner: self.inner.clone() / other.inner.clone(),
+        }
+    }
+}
+
+impl Neg for Node {
+    type Output = Node;
+    fn neg(self) -> Node {
+        Node {
+            inner: -self.inner.clone(),
+        }
+    }
+}
 
 impl Node {
     pub fn new(data: f64) -> Self {
@@ -58,6 +75,8 @@ pub enum Operator {
     Add,
     Mul,
     Pow,
+    Neg,
+    Div,
 }
 
 #[derive(Debug)]
@@ -143,6 +162,20 @@ impl ValueRef {
                 base.0.borrow_mut().grad += base_grad;
                 exponent.0.borrow_mut().grad += exponent_grad;
             }
+            Operator::Div => {
+                let left = &v.prev[0];
+                let right = &v.prev[1];
+
+                let left_val = left.0.borrow().data;
+                let right_val = right.0.borrow().data;
+
+                left.0.borrow_mut().grad += (1.0 / right_val) * v.grad;
+                right.0.borrow_mut().grad += (-left_val / (right_val * right_val)) * v.grad;
+            }
+            Operator::Neg => {
+                let x = &v.prev[0];
+                x.0.borrow_mut().grad += -v.grad;
+            }
             Operator::None => {}
         }
     }
@@ -188,6 +221,34 @@ impl Mul for ValueRef {
             grad: 0.0,
             prev: vec![self.clone(), other.clone()],
             op: Operator::Mul,
+        };
+        ValueRef(Rc::new(RefCell::new(new_value)))
+    }
+}
+
+impl Neg for ValueRef {
+    type Output = ValueRef;
+    fn neg(self) -> ValueRef {
+        let data = -self.0.borrow().data;
+        let new_value = Value {
+            data,
+            grad: 0.0,
+            prev: vec![self.clone()],
+            op: Operator::Neg,
+        };
+        ValueRef(Rc::new(RefCell::new(new_value)))
+    }
+}
+
+impl Div for ValueRef {
+    type Output = ValueRef;
+    fn div(self, other: Self) -> ValueRef {
+        let data = self.0.borrow().data / other.0.borrow().data;
+        let new_value = Value {
+            data,
+            grad: 0.0,
+            prev: vec![self.clone(), other.clone()],
+            op: Operator::Div,
         };
         ValueRef(Rc::new(RefCell::new(new_value)))
     }
