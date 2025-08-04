@@ -92,4 +92,81 @@ mod tests {
         let b = -a;
         assert_eq!(b.data(), -3.0);
     }
+
+    #[test]
+    fn test_pow_forward() {
+        let a = Node::new(2.0);
+        let b = Node::new(3.0);
+        let c = a.pow(b);
+        assert_approx_eq!(c.data(), 8.0, 1e-6);
+    }
+
+    #[test]
+    fn test_pow_backward_constant_exponent() {
+        let x = Node::new(2.0);
+        let exponent = Node::new(3.0);
+        let y = x.pow(exponent.clone());
+        y.backward();
+
+        // dy/dx = n * x^(n-1) = 3 * 2^2 = 12
+        assert_approx_eq!(x.grad(), 12.0, 1e-6);
+        assert_approx_eq!(exponent.grad(), 2.0_f64.ln() * 8.0, 1e-6); // dy/dn = ln(x) * x^n
+    }
+
+    #[test]
+    fn test_pow_backward_variable_exponent() {
+        let base = Node::new(3.0);
+        let exp = Node::new(2.0);
+        let out = base.pow(exp.clone());
+        out.backward();
+
+        let expected_base_grad = 2.0 * 3.0_f64.powf(1.0); // 2 * 3^1 = 6
+        let expected_exp_grad = 3.0_f64.ln() * 9.0; // ln(3) * 9
+
+        assert_approx_eq!(base.grad(), expected_base_grad, 1e-6);
+        assert_approx_eq!(exp.grad(), expected_exp_grad, 1e-6);
+    }
+
+    #[test]
+    fn test_pow_with_negative_exponent() {
+        let base = Node::new(2.0);
+        let exponent = Node::new(-1.0);
+        let result = base.pow(exponent);
+        result.backward();
+
+        // f(x) = x^-1 => f'(x) = -1 * x^-2 = -0.25
+        assert_approx_eq!(base.grad(), -0.25, 1e-6);
+    }
+
+    #[test]
+    fn test_pow_with_zero_exponent() {
+        let base = Node::new(5.0);
+        let exponent = Node::new(0.0);
+        let result = base.pow(exponent.clone());
+        result.backward();
+
+        // x^0 = 1, derivative w.r.t base is 0
+        assert_approx_eq!(result.data(), 1.0, 1e-6);
+        assert_approx_eq!(base.grad(), 0.0, 1e-6);
+        // d/dn(x^n) = ln(x) * x^n
+        assert_approx_eq!(exponent.grad(), 5.0_f64.ln(), 1e-6);
+    }
+
+    #[test]
+    fn test_zero_grad() {
+        let a = Node::new(2.0);
+        let b = Node::new(3.0);
+        let c = a.clone() * b.clone();
+        c.backward();
+
+        assert_eq!(a.grad(), 3.0);
+        assert_eq!(b.grad(), 2.0);
+        assert_eq!(c.grad(), 1.0);
+
+        c.zero_grad(); //clears all values
+
+        assert_eq!(a.grad(), 0.0);
+        assert_eq!(b.grad(), 0.0);
+        assert_eq!(c.grad(), 0.0);
+    }
 }

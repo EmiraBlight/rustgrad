@@ -5,6 +5,7 @@ use std::rc::Rc;
 pub struct Node {
     inner: ValueRef,
 }
+
 impl Add for Node {
     type Output = Node;
 
@@ -67,6 +68,15 @@ impl Node {
     pub fn grad(&self) -> f64 {
         self.inner.0.borrow().grad
     }
+
+    pub fn pow(&self, other: Node) -> Node {
+        Node {
+            inner: self.inner.pow(other.inner),
+        }
+    }
+    pub fn zero_grad(&self) {
+        self.inner.zero_grad();
+    }
 }
 #[derive(Clone, Debug, PartialEq)]
 pub enum Operator {
@@ -90,7 +100,7 @@ pub struct Value {
 pub struct ValueRef(pub Rc<RefCell<Value>>);
 
 impl ValueRef {
-    pub fn new(data: f64) -> Self {
+    fn new(data: f64) -> Self {
         ValueRef(Rc::new(RefCell::new(Value {
             data,
             grad: 0.0,
@@ -98,29 +108,37 @@ impl ValueRef {
             op: Operator::None,
         })))
     }
+    fn topo_sort(
+        v: &ValueRef,
+        visited: &mut std::collections::HashSet<*const RefCell<Value>>,
+        order: &mut Vec<ValueRef>,
+    ) {
+        let ptr = Rc::as_ptr(&v.0);
+        if visited.contains(&ptr) {
+            return;
+        }
+        visited.insert(ptr);
 
-    pub fn backward(self) {
+        for child in &v.0.borrow().prev {
+            Self::topo_sort(child, visited, order);
+        }
+        order.push(v.clone());
+    }
+
+    fn zero_grad(&self) {
+        let mut visited = std::collections::HashSet::new();
+        let mut order = vec![];
+        Self::topo_sort(self, &mut visited, &mut order);
+        for node in order {
+            node.0.borrow_mut().grad = 0.0;
+        }
+    }
+
+    fn backward(self) {
         let mut visited = std::collections::HashSet::new();
         let mut order = vec![];
 
-        fn topo_sort(
-            v: &ValueRef,
-            visited: &mut std::collections::HashSet<*const RefCell<Value>>,
-            order: &mut Vec<ValueRef>,
-        ) {
-            let ptr = Rc::as_ptr(&v.0);
-            if visited.contains(&ptr) {
-                return;
-            }
-            visited.insert(ptr);
-
-            for child in &v.0.borrow().prev {
-                topo_sort(child, visited, order);
-            }
-            order.push(v.clone());
-        }
-
-        topo_sort(&self, &mut visited, &mut order);
+        Self::topo_sort(&self, &mut visited, &mut order);
 
         self.0.borrow_mut().grad = 1.0;
 
@@ -177,6 +195,17 @@ impl ValueRef {
             }
             Operator::None => {}
         }
+    }
+
+    fn pow(&self, other: ValueRef) -> ValueRef {
+        let data = self.0.borrow().data.powf(other.0.borrow().data);
+        let new_value = Value {
+            data,
+            grad: 0.0,
+            prev: vec![self.clone(), other.clone()],
+            op: Operator::Pow,
+        };
+        ValueRef(Rc::new(RefCell::new(new_value)))
     }
 }
 
@@ -242,6 +271,9 @@ impl Neg for ValueRef {
 impl Div for ValueRef {
     type Output = ValueRef;
     fn div(self, other: Self) -> ValueRef {
+        if other.0.borrow().data == 0.0 {
+            panic!("Divide by 0 error!")
+        }
         let data = self.0.borrow().data / other.0.borrow().data;
         let new_value = Value {
             data,
