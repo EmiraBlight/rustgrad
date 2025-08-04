@@ -169,4 +169,59 @@ mod tests {
         assert_eq!(b.grad(), 0.0);
         assert_eq!(c.grad(), 0.0);
     }
+
+    #[test]
+    fn test_sigmoid_forward() {
+        let x = Node::new(0.0);
+        let y = x.sigmoid();
+        assert_approx_eq!(y.data(), 0.5, 1e-6);
+
+        let x = Node::new(2.0);
+        let y = x.sigmoid();
+        let expected = 1.0 / (1.0 + (-2.0f64).exp());
+        assert_approx_eq!(y.data(), expected, 1e-6);
+    }
+
+    #[test]
+    fn test_sigmoid_backward() {
+        let x = Node::new(0.0);
+        let y = x.sigmoid();
+        y.backward();
+
+        // Sigmoid at 0 is 0.5, derivative is s * (1 - s) = 0.25
+        assert_approx_eq!(x.grad(), 0.25, 1e-6);
+    }
+
+    #[test]
+    fn test_sigmoid_backward_nonzero_input() {
+        let x = Node::new(2.0);
+        let y = x.sigmoid();
+        y.backward();
+
+        let s = 1.0 / (1.0 + (-2.0f64).exp());
+        let expected_grad = s * (1.0 - s);
+        assert_approx_eq!(x.grad(), expected_grad, 1e-6);
+    }
+
+    #[test]
+    fn test_sigmoid_chain_rule() {
+        let a = Node::new(1.0);
+        let b = a.sigmoid();
+        let c = b.clone() * b;
+        c.backward();
+
+        // dy/dx = 2s * ds/dx = 2s * s(1 - s) = 2s²(1 - s)
+        let s = 1.0 / (1.0 + (-1.0f64).exp());
+        let expected_grad = 2.0 * s * s * (1.0 - s);
+        assert_approx_eq!(a.grad(), expected_grad, 1e-6);
+    }
+    #[test]
+    fn test_sigmoid_large_negative_input() {
+        let x = Node::new(-100.0);
+        let y = x.sigmoid();
+        y.backward();
+
+        assert_approx_eq!(y.data(), 0.0, 1e-6);
+        assert_approx_eq!(x.grad(), 0.0, 1e-6); // gradient should be ~0
+    }
 }

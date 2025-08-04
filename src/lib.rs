@@ -77,6 +77,12 @@ impl Node {
     pub fn zero_grad(&self) {
         self.inner.zero_grad();
     }
+
+    pub fn sigmoid(&self) -> Self {
+        Node {
+            inner: self.inner.clone().sigmoid(),
+        }
+    }
 }
 #[derive(Clone, Debug, PartialEq)]
 pub enum Operator {
@@ -206,6 +212,25 @@ impl ValueRef {
             op: Operator::Pow,
         };
         ValueRef(Rc::new(RefCell::new(new_value)))
+    }
+
+    fn sigmoid(self) -> ValueRef {
+        let e_value = Value {
+            data: 2.71828,
+            grad: 0.0,
+            prev: vec![],
+            op: Operator::None,
+        };
+        let one_value = Value {
+            data: 1.0,
+            grad: 0.0,
+            prev: vec![],
+            op: Operator::None,
+        };
+        let e = ValueRef(Rc::new(RefCell::new(e_value)));
+        let one = ValueRef(Rc::new(RefCell::new(one_value)));
+
+        one.clone() / (one + e.pow(-self))
     }
 }
 
